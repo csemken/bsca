@@ -1,0 +1,269 @@
+---
+title: 'Bayesian Specification Curve Analysis'
+subtitle: 'R code to reproduce the main results and figures'
+author: 'Christoph Semken and David Rossell'
+output:
+  html_document:
+    toc: false
+    number_sections: true
+    df_print: kable
+---
+
+<!-- This file contains the R code needed to reproduce the Bayesian Specification Curve Analyses (BSCA) shown in our main paper. The file `bsca_main.Rmd` contains the raw R code, whereas `bsca_main.html` is a compiled file displaying both the code and the results. -->
+
+We explain how to obtain BMA and BSCA results in R by reproducing our findings in the two teenager well-being datasets.
+Subsection 1 loads R packages and functions needed for the analysis, as well as the Youth Risk Behavior Survey (YBRS) and Millenium Cohort Study (MCS) datasets on adolescent mental well-being and technology use.
+Subsection 2 applies Bayesian model selection and averaging to both datasets.
+Finally, Subsections 3 and 4 produce Figs. 1 (single-outcome BSCA) and 2 (multiple-outcome BSCA) presented in the manuscript, respectively.
+
+
+## Setup
+
+We start by loading the required R packages. For the statistical analysis we use `mombf` and `BAS`, whereas `tidyverse` offers some convenient functions for treating the data.
+We source file `functions.R`, which contains auxiliary functions to produce the BSCA plots, and load the pre-processed version of the YBRS and MCS datasets in files `yrbs.Rdata` and `mcs.Rdata`, respectively.
+We cannot provide these pre-processed data due to copyright issues, but you can run the code provided in the replication file `bsca_preanalysis.Rmd` to create the processed data from the raw data and code provided by @orben_association_2019. See also `bsca_preanalysis.html` for a compiled version displaying the R code and output.
+
+```{r setup imports, message=FALSE}
+library(mombf)
+library(BAS)
+library(tidyverse)
+```
+
+```{r,eval=FALSE}
+source('code/functions.R')
+yrbs = new.env(); mcs = new.env()
+load('data/export/yrbs.Rdata', yrbs)
+load('data/export/mcs.Rdata', mcs)
+```
+
+<!-- We actually use the below code.  Please adjust the `PATH` variable if you would like to replicate our findings. -->
+
+```{r setup notshow, echo=FALSE}
+PATH = '.'
+source(file.path(PATH,'code/functions.R'))
+
+yrbs = new.env(); mcs = new.env()
+load(file.path(PATH, 'data/export/yrbs.Rdata'), yrbs)
+load(file.path(PATH, 'data/export/mcs.Rdata'), mcs)
+```
+
+
+
+## Bayesian model selection
+
+### YRBS data 
+
+We begin by analyzing the YRBS data.
+The data frame `y` stores several outcomes, whereas `x` stores treatment variables and `data` stores other recorded variables. We specify that we wish to use the outcome variable *thought about suicide* (the second column in `y`) by setting `idy=2`. We also specify that we wish to use TV and electronic device use (first and second column in `x`) as treatment variables to be jointly included in all regression models by setting `idx=c(1,2)`.
+Finally we specify to use race, age, gender, school grade, survey year and body mass index as potential control variables (saved in `cvars` and `cvarsplus`).
+
+```{r}
+attach(yrbs)
+names(y)
+names(x)
+c_names
+```
+
+```{r}
+idy = 2; idx = c(1,2)
+datareg = data.frame(y[,idy], x[,idx], data[,c(cvars,cvarsplus)])
+names(datareg) = c('y', names(x)[idx], c_names)  # set names
+datareg = datareg[rowSums(is.na(datareg))==0, ]  # remove NAs
+detach(yrbs)
+```
+
+The data.frame `datareg` contains the outcome, treatment and control variables. For illustration, its first few rows are displayed below.
+These variables have been conveniently coded so they can be entered directly into the usual R regression equation. For instance, `Aged 12` and `Aged 13` are indicators for an individual's age being 12 and 13 years, whereas `Age` contains the age in years, using these 3 columns to code the effect of age allows to capture non-linear effects detected in preliminary exploratory data analyses (see reproduction file `bsca_preanalysis.Rmd`).
+<!-- see Supplementary Information (`bsca_supplement.Rmd`) for details. -->
+
+```{r}
+head(datareg %>% rename('ED Use' = 'Electronic Device Use'))
+```
+
+A first step in BSCA is to run Bayesian model selection (BMS), which will assign a score (posterior probability) to each model (possible set of control variables). Next, we use Bayesian model averging (BMA) to combine these estimates. 
+<!-- The Supplementary Information includes an introduction to the BMS and BMA frameworks. -->
+Since the outcome variable is binary we use logistic regression models, setting a uniform prior on the model size (`modelbbprior(1,1)`). 
+The function `mombf:::modelSelectionGLM` computes scores for all 1024 possible models, and may take a while to run.
+
+```{r}
+yrbs_ms = mombf:::modelSelectionGLM(
+  y ~ ., data=datareg, 
+  includevars=1, familyglm=binomial(link='logit'), 
+  priorDelta=modelbbprior(1,1)
+)
+```
+
+The BMA treatment effect estimates, 95% posterior intervals and marginal posterior probability that the variable has an effect on the outcome are stored in `yrbs_coef`. The output indicates a strong evidence that both treatments have an effect, albeit with opposing signs, and that age, gender, grade and BMI are control covariates that one should include in the model to avoid biases in the treatment effect estimates (driven by under-selection of truly relevant controls). 
+
+```{r}
+yrbs_coef = coef(yrbs_ms)
+options(scipen=999)  # turn off scientific notation
+yrbs_coef
+```
+
+Given these coefficients, we use the function `getOR` to obtain odds ratios for increasing the TV use from low to medium/high, and for increasing the electronic device use from 0 to >= 5 hours (coded as EDU=1 in our dataset, leading to setting `treatvals=1` below).  The function exponentiates the coefficient estimates and formats the result.
+
+```{r}
+getOR(yrbs_coef, treat='TV Use', digits=2)
+```
+
+```{r}
+getOR(yrbs_coef, treat='Electronic Device Use', treatvals=1, digits=2)
+```
+
+Note that the regression models include simultaneously the two treatment variables, TV and electronic device (ED) usage, which is necessary to avoid biased estimates when treatments are correlated. In these data the correlation is mild, for instance Pearson's correlation between the number of hours of TV use and ED use (columns `q81` and `q82` in `data`) is 0.21. 
+
+```{r}
+round(cor(na.omit(yrbs$data[c('q81', 'q82')]), method='pearson')[1,2], 
+      digits=2)
+```
+
+
+### MCS data
+
+Next, we load the MCS dataset and run Bayesian model selection and averaging, analogously to the above analysis of the YRBS data. As described in the main manuscript, for illustration in our analysis we considered 4 outcome variables, 5 treatments and 14 potential control variables (results for other outcome variables are shown in Fig. S1). We display the names of these variables, which have been stored in the `mcs` workspace.
+
+```{r,message=FALSE}
+attach(mcs)
+```
+
+```{r}
+names(yvars) 
+```
+
+```{r}
+x_names
+```
+
+```{r}
+names(cvars)
+```
+
+The code below runs BMA for all 5 outcome variables. One option is to use the `BAS` package, which implements MCMC sampling to explore the model space (sets of control covariates to be potentially included in the regression). A faster alternative analysis is to set `fast = TRUE`, which limits the analysis to the top 100 models (i.e. those shown in the BSCA plot) according to a prior screening (stored in `pp_lin`, see `bsca_preanalysis.Rmd` for details). The posterior probabilities of any model after the 100 first ones is vanishingly small, and the final BSCA results are virtually identical to those of the analysis using the `BAS` package.
+
+```{r}
+fast = TRUE
+
+mcs_coef = list(); mcs_ms = list()
+for (idy in 1:length(yvars)) {
+  # select data
+  yvar = yvars[idy]; yname = names(yvars)[idy]
+  datareg = na.omit(data[c(yvar, x_vars, cvars)])
+  names(datareg) = c('y', x_names, names(cvars))
+  
+  # BMA 
+  if (fast) {
+    models = as.matrix.pp(
+      pp_lin[[idy]], nummodels=100, numvars=length(datareg)
+    )
+    mcs_ms[[yname]] = mombf:::modelSelectionGLM(
+      y ~ ., data=datareg, models=models,
+      familyglm= binomial(link='logit'),
+      priorDelta=modelbbprior(1,1)
+    ); cat('\n')
+  } else {
+    mcs_ms[[yname]] = BAS:::bas.glm(
+      y~., data=datareg, family=binomial(link='logit'), 
+      betaprior=bic.prior(), modelprior=beta.binomial(),
+      method='MCMC', n.models=150
+    )
+  }
+  mcs_coef[[yname]] = coef(mcs_ms[[yname]])
+}
+detach(mcs)
+```
+
+We can inspect the BMA results for the four outcomes. For brevity here we focus on *parent-assessed* high total difficulties and *adolescent-assessed* depression (see Subsection 3 below for a plot summarizing the BMA results for the two other outcomes).
+The analysis provides strong evidence that, according to parents, social media decrease the odds of total difficulties (marginal posterior probability=1, up to rounding), whereas electronic games increase those odds. We also find strong evidence that BMI, educational motivation, closeness to parents, the primary caregiver's word ability score and psychological distress, presence of a longstanding illness and the household income are necessary control covariates, as well as strong evidence that other covariates are not needed.
+
+```{r}
+mcs_coef[["High total difficulties (parent)"]]
+```
+
+The output for adolescent-assessed depression can be interpreted analogously. Briefly, here there is strong evidence that social media and other internet use increase the odds of depression, in contrast with the results of the earlier parent-assessed outcome. Some of the needed control covariates are also different, for instance males self-report lower odds of depression than females, whereas gender did not play a role in the parental assessment.
+
+```{r}
+mcs_coef[["Depressed (adolescent)"]]
+```
+
+To summarize the treatment effects of interest we again use the auxiliary function `getOR`. These correspond to odds ratios for increasing the use of social media from 0 (no usage) to >7 hours (coded as 1 in our dataset, hence we set `treatvals=1`).
+We first obtain odds-ratios and 95% posterior intervals for social media and electronic games on parent-assessed total difficulties.
+
+```{r}
+getOR(mcs_coef$`High total difficulties (parent)`, treat='Social media', 
+      treatvals=1, digits=2)
+```
+
+Next we report the odds ratios for adolescent self-assessed depression and low self-esteem.
+
+```{r}
+getOR(mcs_coef$`Depressed (adolescent)`, treat='Social media', 
+      treatvals=1, digits=2)
+```
+
+```{r}
+getOR(mcs_coef$`Low self-esteem (adolescent)`, treat='Social media', 
+      treatvals=1, digits=2)
+```
+
+
+
+## Reproducing Figure 1 (single-outcome BSCA)
+
+### Top panel: YRBS data
+
+We use function `single_bsca` to plot the single-outcome BSCA for the YRBS data and the outcome *thought about suicide*.
+The argument `coefidx` specifies the names of the treatment variables that should be plotted. The function also allows specifying optional arguments such as the treatment names to be displayed in the legend (argument `x.labels`),
+variable names to be displayed in the bottom panel displaying variable configurations (argument `var.labels`), and omitting variables from that panel (argument `omitvars`, useful when there are many variables or when several columns code for the non-linear effect of a single variable and are always included together, such as year in the YRBS data).
+The labels on the y axis are stored in an array whose names (optionally) are the original values (argument `y.labels`).  Here, we turn the estimated coefficient into the odds ratio by exponentiating it.
+
+```{r, fig.height=4, fig.width=7}
+idx_fit = c(2:4) 
+id_years = c(12:14)
+y_labels = c(0.8, 1, 1.25, 1.5, 1.75, 2)
+names(y_labels) = log(y_labels)  # y scale as odds ratio
+
+single_bsca(
+  yrbs_ms, coefidx=idx_fit, omitvars=c(1, idx_fit, id_years), 
+  x.labels=yrbs$x_labels, var.labels=yrbs$c_names, y.labels=y_labels
+)
+```
+
+### Bottom panel: MCS data
+
+Similarly, we plot the single-outcome BSCA for the MCS data and the parent-assessed outcome *high total difficulties*.
+
+```{r, fig.height=5, fig.width=7}
+y_labels = c(1/2, 1/1.5, 1, 1.5, 2, 2.5)
+names(y_labels) = log(y_labels)  # y scale as odds ratio
+
+single_bsca(
+  mcs_ms$`High total difficulties (parent)`, coefidx=2:6, 
+  x.labels=mcs$x_names, var.labels=names(mcs$cvars), y.labels=y_labels, 
+  height.vars=0.55
+)
+```
+
+
+## Reproducing Figure 2 (multiple-outcome BSCA)
+
+Our MCS data analysis included eight outcomes and five treatments of interest, for a total of 40 treatment-outcome combinations. To reduce the burden associated with producing a single BSCA plot for each outcome, the function `multi_bsca` summarizes the BMA results in a single plot. This plot allows one to easily evaluate and compare effects of several treatments on several outcomes. For instance, below all treatments have a similar effect on adolescent-assessed depression and on self-stem. However, these effects are non-comparable to those on parent-assessed total difficulties and emotional problems.[^summary-note] We also add the ATE across treatments (`add.ate=TRUE`) and the simple average across outcomes (`add.avg=TRUE`).  The average of the ATE estimates is the global ATE.
+
+[^summary-note]: Using the `BAS` package (if `fast=FALSE`), currently shows normal approximations for the 95% interval in the summary plot.  Thus, it looks different from the `mombf` version, which estimates the 95% interval using posterior sampling.  Since the latter are more exact, we show it in the main paper.  However, running the above analysis using `BAS` shows that the main results remain unchanged (up to rounding) if one samples the entire model space.  Adding the ATE is not supported for the `BAS` package.
+
+```{r, fig.height=4, fig.width=7}
+g = multi_bsca(mcs_coef, ms=mcs_ms, conversion=exp,  y.scale='Odds ratio', 
+            treatments=c('TV', 'Electronic games', 'Social media', 
+                         'Other internet',  'Own computer'),
+            add.ate=TRUE, add.global.ate=TRUE) +
+  scale_y_continuous(trans='log', breaks=c(1/2,1:5), minor_breaks=NULL) +
+  theme(legend.key.size=unit(0.9, 'cm'))
+g + geom_hline(yintercept=1, lwd=0.2, colour=g$theme$panel.border$colour)
+```
+
+```{r, echo=FALSE}
+# save figure
+if (exists('plot_path')) {
+  ggsave(file.path(plot_path, 'fig2.png'), height=4, width=7)
+}
+```
