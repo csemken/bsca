@@ -1,7 +1,9 @@
 ---
-title: 'Bayesian Specification Curve Analysis'
+title: 'Analysis of multiple specifications'
 subtitle: 'R code to reproduce the main results and figures'
-author: 'Christoph Semken and David Rossell'
+author: 
+  - Christoph Semken
+  - David Rossell
 output:
   html_document:
     toc: false
@@ -39,7 +41,7 @@ load('data/export/mcs.Rdata', mcs)
 <!-- We actually use the below code.  Please adjust the `PATH` variable if you would like to replicate our findings. -->
 
 ```{r setup notshow, echo=FALSE}
-PATH = '.'
+PATH= '.'
 source(file.path(PATH,'code/functions.R'))
 
 yrbs = new.env(); mcs = new.env()
@@ -210,7 +212,7 @@ getOR(mcs_coef$`Low self-esteem (adolescent)`, treat='Social media',
 
 ## Reproducing Figure 1 (single-outcome BSCA)
 
-### Top panel: YRBS data
+### YRBS data
 
 We use function `single_bsca` to plot the single-outcome BSCA for the YRBS data and the outcome *thought about suicide*.
 The argument `coefidx` specifies the names of the treatment variables that should be plotted. The function also allows specifying optional arguments such as the treatment names to be displayed in the legend (argument `x.labels`),
@@ -229,9 +231,9 @@ single_bsca(
 )
 ```
 
-### Bottom panel: MCS data
+### MCS data
 
-Similarly, we plot the single-outcome BSCA for the MCS data and the parent-assessed outcome *high total difficulties*.
+Alternatively, we can plot the single-outcome BSCA for the MCS data and the parent-assessed outcome *high total difficulties*.
 
 ```{r, fig.height=5, fig.width=7}
 y_labels = c(1/2, 1/1.5, 1, 1.5, 2, 2.5)

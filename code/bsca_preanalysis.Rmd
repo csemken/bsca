@@ -1,6 +1,6 @@
 ---
-title: 'Bayesian Specification Curve Analysis'
-subtitle: 'Data Generation and Pre-Analysis'
+title: 'Analysis of multiple specifications'
+subtitle: 'Data preparation and pre-analysis'
 author: 
   - Christoph Semken
   - David Rossell
@@ -22,7 +22,7 @@ library(stargazer)
 library(cowplot)
 library(gridGraphics)
 
-PATH = '.'
+PATH= '.'
 
 source(file.path(PATH,'code/functions.R'))
 

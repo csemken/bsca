@@ -1,14 +1,14 @@
 # Overview
 
-This repository contains the code needed to reproduce the results of “Bayesian Specification Curve Analysis” (Semken and Rossell 2020).
+This repository contains the code needed to reproduce the results of “Analysis of multiple specifications: statistical validity and a Bayesian proposal” (Semken and Rossell 2021).
 
 Preprint (pdf): https://osf.io/cahyq
 
-Supplementary Information (pdf): https://osf.io/7fsqu
+Online supplement (pdf): https://osf.io/7fsqu
 
-To use BSCA, download `code/functions.R` and follow the instructions in the Supplementary Information.
+To use BSCA, download `code/functions.R` and follow the instructions in the online supplement.
 
-To reproduce the analysis, first follow the instructions in `code/bsca_preanalysis.Rmd` to construct the dataset and perform a pre-analysis.  Then obtain the main results and create the supplementary information by compiling `code/bsca_supplement.Rmd`.  Make sure to have the below requirements installed.
+To reproduce the analysis, first follow the instructions in `code/bsca_preanalysis.Rmd` to construct the dataset and perform a pre-analysis.  Then obtain the main results and create the online supplement by running `code/bsca_supplement.Rmd`.  Make sure to have the below requirements installed.
 
 # Requirements
 

@@ -1,11 +1,14 @@
 ---
-title: "SCA and BSCA estimator properties: a simulation study"
-author: 'Christoph Semken and David Rossell'
+title: 'Analysis of multiple specifications'
+subtitle: 'SCA and BSCA estimator properties: a simulation study'
+author: 
+  - Christoph Semken
+  - David Rossell
 bibliography: specurveanalysis.bib
 output:
   html_document:
-    toc: true
-    number_sections: true
+    toc: yes
+    number_sections: yes
 ---
 
 ```{r setup sim, include=FALSE}
@@ -49,7 +52,7 @@ source('code/functions.R')
 ```
 
 ```{r setup sim notshow, echo=FALSE}
-PATH = '.'
+PATH= '.'
 source(file.path(PATH,'code/functions.R'))
 ```
 
@@ -77,22 +80,26 @@ simdata= function(n, beta, alpha, seed) {
 ```
 
 
-
 ## Single treatment
 
 We consider two scenarios, both with a single treatment. In Scenario 1 the treatment has a truly zero effect, and a single control with a non-zero effect. This scenario assesses the type I error, that is the frequentist probability that BMA would wrongly claim the treatment effect to exist. In Scenario 2 the treatment has a truly non-zero effect, and we assess the statistical power of BMA to detect said effect.
+
+In Scenario 1 we also illustrate that the type I error of SCA can be very large, despite using a permutation test to control for false positives. The reason is that SCA tests the median effect averaging across all covariate specifications. In our case there are two such specifications, depending on whether one includes the confounder or (wrongly) excludes it from the analysis. Although the median across these two specifications is non-zero, the true treatment effect is zero.
+
+We use the bootstrap-based P-value proposed by Simonsohn, Simmons, and Nelson (2020) for non-experimental data. To facilitate comparisons, we clearly indicate each step laid out in that paper with comments in the code. A standard permutation test gave the same result (100% false positives).
+
 
 ### Truly no treatment effect
 
 BMA point estimates are stored in `bmaest` and its posterior probabilities on the presence of an effect in `margpp`. We also store in `scaest` the point estimate returned by a standard Specification Curve Analysis, which takes the median across all possible specifications.
 
 ```{r}
-n= 1000; beta= 0; alpha= 1; nsims= 100
+n= 1000; beta= 0; alpha= 1; nsims= 100; nperm= 500; 
 xnames= paste('x',1:length(beta),sep='')
 znames= paste('z',1:length(alpha),sep='')
 bmaest= margpp= matrix(NA,nrow=nsims,ncol=1+length(beta)+length(alpha))
 colnames(bmaest)= colnames(margpp)= c('Intercept', xnames, znames)
-scaest= double(nsims)
+scaest= scapval= double(nsims)
 for (i in 1:nsims) {
     data= simdata(n=n,beta=beta,alpha=alpha,seed=300+i)
     #BMA
@@ -103,9 +110,41 @@ for (i in 1:nsims) {
     b= coef(ms)
     bmaest[i,]= b[-nrow(b),'estimate']
     margpp[i,]= b[-nrow(b),'margpp']
-    #SCA
-    sca= run_specs(df=data, y="y", x=xnames, controls=znames, model="lm")
-    scaest[i]= summarise_specs(unique(sca))$median
+    # SCA median bootstrap-based permutation test 
+    # "(1) Estimate all K specifications with the observed data"
+    sca= run_specs(
+      df=data, y="y", x=xnames, controls=znames, 
+      model="lm", keep.results=TRUE
+    )
+    # remove duplicate models (bug in specr)
+    sca= sca[!duplicated(sca[,c("x", "y", "controls")]),]
+    scaest[i]= summarise_specs(sca)$median
+    # "(2) Generate K different dependent variables under the null"
+    yhat = apply(sca, 1, function(r) {
+      t(data$y - r$res$coefficients[xnames]*data[xnames])
+    })
+    colnames(yhat) = paste("y", 1:ncol(yhat), sep="")
+    data = cbind(data, yhat)
+    medianperm= double(nperm)
+    # Generate formulas for step 4 (using "predicted" y)
+    formulas = apply(sca, 1, function(r) {r$res$call$formula})
+    new_formulas = paste(
+      colnames(yhat),
+      sapply(formulas, function(f) {substring(f, 2)}, USE.NAMES=FALSE),
+      sep=""
+    )
+    for (b in 1:length(medianperm)) {
+      # "(3) Draw at random, and with replacement, N rows from this matrix, 
+      #      using the same drawn rows of data for all K specifications."
+      dataperm = data[sample(1:n, replace=TRUE),]
+      # "(4) Estimate the K specifications on the drawn data."
+      coefperm = sapply(new_formulas, function(f) {
+        lm(f, dataperm)$coefficients[xnames]
+      })
+      medianperm[b] = median(coefperm)
+    }
+    # "(6) ... Compute what percentage..."
+    scapval[i]= mean(abs(medianperm) > abs(scaest[i]))
 }
 ```
 
@@ -119,7 +158,8 @@ bma.rmse= sqrt(mean((bmaest[,'x1'] - beta)^2))
 bma.reject= mean(margpp[,'x1']>0.95)
 sca.bias= mean(scaest - beta)
 sca.rmse= sqrt(mean((scaest - beta)^2))
-tab1= rbind(c(bma.bias, bma.rmse, bma.reject), c(sca.bias, sca.rmse, NA))
+sca.reject= mean(scapval< 0.05)
+tab1= rbind(c(bma.bias, bma.rmse, bma.reject), c(sca.bias, sca.rmse, sca.reject))
 rownames(tab1)= c('BMA','SCA')
 colnames(tab1)= c('Bias','RMSE','type I error')
 tab1
@@ -128,7 +168,6 @@ tab1
 ```{r echo=FALSE, results='asis'}
 #kable(tab1, caption="Bias and RMSE in Scenario 1: one treatment with zero effect, one control with non-zero effect")
 ```
-
 
 
 ### Truly non-zero treatment effect
