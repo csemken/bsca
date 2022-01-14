@@ -6,27 +6,18 @@ Preprint (pdf): https://osf.io/cahyq
 
 Online supplement (pdf): https://osf.io/7fsqu
 
-To use BSCA, download `code/functions.R` and follow the instructions in the online supplement.
+# Run R code
 
-To reproduce the analysis, first follow the instructions in `code/bsca_preanalysis.Rmd` to construct the dataset and perform a pre-analysis.  Then obtain the main results and create the online supplement by running `code/bsca_supplement.Rmd`.  Make sure to have the below requirements installed.
+To reproduce the analysis, first follow the instructions in `code/bsca_preanalysis.Rmd` to construct the datasets. Second, run the code by completing the following steps: 
 
-# Requirements
+1. Set the environment variable `BSCA_PATH` to the absolute path of the project folder.
+2. Run `renv/activate.R` and `renv::restore()` using R 4.0. This will install the right versions of all dependencies.
+3. Follow the instructions in and compile `code/bsca_preanalysis.Rmd`, `code/bsca_supplement.Rmd` and `code/bma_simulation.Rmd` to reproduce the analysis.
 
-Main software:
-- R 4.0.3
-- Pandoc 2.10.1
-- texlive 2019 (with packages float, placeins, cleveref)
-- mombf R package compiled from latest [source code](https://github.com/davidrusi/mombf) (e.g. using `devtools::install_github("davidrusi/mombf")`)
-
-R packages from CRAN:
+On a bash shell run from the project directory the analysis can be reproduced using the following command:
+```bash
+export BSCA_PATH=$(pwd) 
+Rscript "renv/activate.R"
+Rscript -e "renv::restore()"
+Rscript -e "setwd('code'); library(rmarkdown); render('bsca_preanalysis.Rmd'); render('bsca_supplement.Rmd'); render('bma_simulation.Rmd')"
 ```
-BAS 1.5.5
-tidyverse 1.3.0
-cowplot 1.1.0
-gridGraphics 0.5.0
-kableExtra 1.2.1
-specr 0.2.1
-knitr 1.30
-rmarkdown 2.5
-```
-

@@ -1,5 +1,5 @@
 ---
-title: 'Analysis of multiple specifications'
+title: 'Specification analysis for technology use and teenager well-being'
 subtitle: 'SCA and BSCA estimator properties: a simulation study'
 author: 
   - Christoph Semken
@@ -13,17 +13,11 @@ output:
 
 ```{r setup sim, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-options(warn=-1)
+options(warn=-1, scipen=999)
+options(xtable.table.placement="bt")
 ```
 
-We illustrate the use of BMA via a simple simulation study to infer individual treatment effects, as well as the average treatment effect (ATE). We evaluate the bias, root mean squared estimation error (RMSE) associated to the BMA point estimator, and the type I error probability (false positive) and power for testing if an effect is indeed present. We provide the R code so that readers can easily modify the simulation parameters. 
-
-
-
-We first summarize the results of the results for one outcome. In our settings BMA had near-zero bias and its RMSE was an order of magnitude smaller than SCA estimates.
-Further, the estimated type I error probability and power for all coefficients were near 0 and 1, respectively. 
-These high-quality results are due to using a relatively large sample size of $n=1000$. We chose this value because the teenager well-being studies also had such large $n$ (actually larger), but we encourage readers to also assess performance in other settings.
-All scenarios include one control covariate that truly has an effect and is correlated with the treatment(s). In the multiple treatment case we consider effects of different magnitudes, to illustrate the power to detect smaller versus larger effects.
+This file contains the simulation to compare the properties of SCA and BMA estimators. We obtain the following results:
 
 * Scenario 1 ($\beta_1=0$): ``r knitr::load_cache('tabsummary', 'tab1summary')``
 * Scenario 2 ($\beta_1=1$): ``r knitr::load_cache('tabsummary', 'tab2summary')``
@@ -36,13 +30,15 @@ Subsection 3 considers multiple treatments of interest. We show how to obtain in
 Finally, Subsection 4 studies the properties of the BMA estimator in the case the ATE is taken over multiple outcomes.
 
 
-## Setup
+# Setup
 
 We use the packages `mombf` and `specr` for BMA and SCA inference, respectively.
 
 ```{r setup sim imports, message=FALSE}
 library(mombf)
 library(specr)
+library(tidyverse)
+library(xtable)
 ```
 
 We also load our auxiliary functions.
@@ -52,7 +48,8 @@ source('code/functions.R')
 ```
 
 ```{r setup sim notshow, echo=FALSE}
-PATH= '.'
+PATH = Sys.getenv("BSCA_PATH")
+
 source(file.path(PATH,'code/functions.R'))
 ```
 
@@ -62,7 +59,7 @@ We create a function that simulates data from a Gaussian linear regression with 
 simdata= function(n, beta, alpha, seed) {
  set.seed(seed)
  J= length(beta); q= length(alpha)
- x = matrix(rnorm(n*J),nrow=n) #simulate the value of treatment(s)
+ x= matrix(rnorm(n*J),nrow=n) #simulate the value of treatment(s)
  xnames= paste('x',1:length(beta),sep='')
  if (q>0) { #if there are control covariates
    z = rowMeans(x) + matrix(rnorm(n*q),nrow=n) #correlated with treatments
@@ -80,18 +77,12 @@ simdata= function(n, beta, alpha, seed) {
 ```
 
 
-## Single treatment
+# Single treatment
 
-We consider two scenarios, both with a single treatment. In Scenario 1 the treatment has a truly zero effect, and a single control with a non-zero effect. This scenario assesses the type I error, that is the frequentist probability that BMA would wrongly claim the treatment effect to exist. In Scenario 2 the treatment has a truly non-zero effect, and we assess the statistical power of BMA to detect said effect.
+## Truly no treatment effect
 
-In Scenario 1 we also illustrate that the type I error of SCA can be very large, despite using a permutation test to control for false positives. The reason is that SCA tests the median effect averaging across all covariate specifications. In our case there are two such specifications, depending on whether one includes the confounder or (wrongly) excludes it from the analysis. Although the median across these two specifications is non-zero, the true treatment effect is zero.
-
-We use the bootstrap-based P-value proposed by Simonsohn, Simmons, and Nelson (2020) for non-experimental data. To facilitate comparisons, we clearly indicate each step laid out in that paper with comments in the code. A standard permutation test gave the same result (100% false positives).
-
-
-### Truly no treatment effect
-
-BMA point estimates are stored in `bmaest` and its posterior probabilities on the presence of an effect in `margpp`. We also store in `scaest` the point estimate returned by a standard Specification Curve Analysis, which takes the median across all possible specifications.
+BMA point estimates are stored in `bmaest` and its posterior probabilities on the presence of an effect in `margpp`. We also store in `scaest` the point estimate returned by a standard Specification Curve Analysis, which takes the median across all possible specifications. 
+For the SCA median we use the paired bootstrap procedure proposed by Simonsohn et al. (2020).
 
 ```{r}
 n= 1000; beta= 0; alpha= 1; nsims= 100; nperm= 500; 
@@ -148,9 +139,7 @@ for (i in 1:nsims) {
 }
 ```
 
-We report the estimated bias and RMSE. The BMA estimate has a bias close to zero, in contrast SCA tends to over-estimate the true parameter value $\beta_1=0$. The reason is that $x$ is correlated with the control $z$, which truly has an effect, hence the model including $x$ but not $z$ over-estimates $\beta_1$ (this follows from simple algebra and standard least-squares theory).
-
-We also assess the type I error for testing the null hypothesis $\beta_1=0$ versus the alternative $\beta_1 \neq 0$. The BMA test rejects $\beta_1=0$ when the posterior probability $P(\beta_1 \neq 0 \mid y)$ is large, specifically $P(\beta \neq 0 \mid y)>0.95$ guarantees that the type I error is below 0.05 (as the sample size $n \rightarrow \infty$). In most simulations $P(\beta \neq 0 \mid y)$ took a pretty small value (run `summary(margpp[,'x1'])` in R) and the null hypothesis was never rejected, i.e. the estimated type I error is 0.
+We calculate the bias, RMSE and type I error rate.
 
 ```{r tab1, cache=TRUE}
 bma.bias= mean(bmaest[,'x1'] - beta)
@@ -161,18 +150,13 @@ sca.rmse= sqrt(mean((scaest - beta)^2))
 sca.reject= mean(scapval< 0.05)
 tab1= rbind(c(bma.bias, bma.rmse, bma.reject), c(sca.bias, sca.rmse, sca.reject))
 rownames(tab1)= c('BMA','SCA')
-colnames(tab1)= c('Bias','RMSE','type I error')
+colnames(tab1)= c('Bias','RMSE','Type I error')
 tab1
 ```
 
-```{r echo=FALSE, results='asis'}
-#kable(tab1, caption="Bias and RMSE in Scenario 1: one treatment with zero effect, one control with non-zero effect")
-```
 
+## Truly non-zero treatment effect
 
-### Truly non-zero treatment effect
-
-We repeat the exercise with a non-zero treatment effect $\beta_1=1$. The table below repors the estimated bias, RMSE and power to detect that truly $\beta_1 \neq 0$. The null hypothesis is rejected in all simulations, hence the estimated power is 1.
 
 ```{r}
 n= 1000; beta= 1; alpha= 1; nsims= 100
@@ -197,6 +181,8 @@ for (i in 1:nsims) {
 }
 ```
 
+When the coefficients are truly non-zero we calculate the bias, RMSE and power.
+
 ```{r tab2, cache=TRUE}
 bma.bias= mean(bmaest[,'x1'] - beta)
 bma.rmse= sqrt(mean((bmaest[,'x1'] - beta)^2))
@@ -208,25 +194,12 @@ rownames(tab2)= c('BMA','SCA'); colnames(tab2)= c('Bias','RMSE','Power')
 tab2
 ```
 
-```{r echo=FALSE, results='asis'}
-#kable(tab2, caption="Bias and RMSE in Scenario 2: one treatment with non-zero effect, one control with non-zero effect")
-```
 
 
+# Multiple treatments
 
 
-## Multiple treatments
-
-An interesting feature of SCA is visualizing the heterogeneity across multiple treatments/outcomes, and providing an averaged (or median) treatment effect over treatments/outcomes (and sets of control covariates). We show how to use BMA to estimate and test individual treatments, so that one can distinguish those with positive/zero/negative effects, as well as estimating an testing for the presence of an average treatment effect.
-
-For simplicity we show an example with a single outcome and 6 treatments. We first consider a setting where all 6 treatments truly have a zero effect, so the ATE=0. This setting helps assess the probability that any individual treatment is falsely declared to have an effect. We then consider a second setting where 3 treatments truly have an effect and the remaining 2 treatments do not, which helps assess the statistical power of BMA tests on individual treatments, and on the ATE.
-More specifically, the ATE is usually defined as ATE=$(\sum_{j=1}^6 \beta_j)/6$. We test this null hypothesis by obtaining the posterior probability
-$P(\mbox{ATE} \neq 0 \mid y)= P(\sum_j \beta_j \neq 0 \mid y)$, and rejecting the null hypothesis when said probability exceeds the 0.95 threshold.
-
-We remark on an important property of our specific BMS implementation. In classical P-value based hypothesis tests the probability of claiming at least one false positive finding (family-wise type I error) increases as one adds more treatments, unless one uses more stringent P-value thresholds. In our BMS framework false positive inflation is avoided by using a Beta-Binomial(1,1) prior on the model space (or the EBIC approximation to model posterior probabilities, as outlined earlier). This formulation adds a penalization term as one increases the number of treatments (or covariates). The penalization ensures that as the sample size $n$ grows, the family-wise type I error probability converges to 0, see @chen_2008 or @rossell_2018 (Sections 3-4) for a mathematical proof. It also ensures that BMA parameter estimates and 95% intervals converge to those obtained via maximum likelihood estimation under the model that includes only the subset of treatments and controls truly associated with the outcome @rossell_2017 (Proposition 3).
-
-
-### Zero average treatment effect
+## Zero average treatment effect
 
 The simulation is as before, with the difference that `beta` has now 6 elements.
 
@@ -257,18 +230,18 @@ for (i in 1:nsims) {
 }
 ```
 
-We first report the bias, RMSE and type I error probabilities for individual treatments. BMA did not declare as significant any individual treatment in any of the simulated datasets, that is both the individual and family-wise type I error probabilities are estimated to be near-zero.  The individual treatment effects are not usually considered in SCA analyses.
+We first report the properties of individual coefficients.
 
 ```{r}
 bias.indiv= rowMeans(t(bmaest[,xnames]) - beta)
 rmse.indiv= sqrt(rowMeans((t(bmaest[,xnames]) - beta)^2))
 reject.indiv= colSums(margpp[,xnames] > 0.95) / nrow(margpp)
 tab3.indiv= rbind(bias.indiv, rmse.indiv, reject.indiv)
-rownames(tab3.indiv)= c('Bias','RMSE','type I error')
+rownames(tab3.indiv)= c('Bias','RMSE','Type I error')
 round(tab3.indiv, 5)
 ```
 
-We next estimate the bias, RMSE and type I error associated to the ATE.  In this simulation, the absolute bias and RMSE are more than 100 and 10 times larger for the median taken over all specifications, respectively.
+Next, we report the the properties of the ATE.
 
 ```{r tab3, cache=TRUE}
 ate= mean(beta)
@@ -281,15 +254,16 @@ sca.rmseate= sqrt(mean((scaest - ate)^2))
 tab3= rbind(c(bma.biasate, bma.rmseate, bma.rejectate), 
             c(sca.biasate, sca.rmseate, NA))
 rownames(tab3)= c('BMA','SCA')
-colnames(tab3)= c('Bias','RMSE','type I error')
+colnames(tab3)= c('Bias','RMSE','Type I error')
 round(tab3, 4)
 ```
 
 
 
-### Non-zero average treatment effect
+## Non-zero average treatment effect
 
-Lastly we consider a setting where 2 treatments truly have no effect ($\beta_1 = \beta_2 = 0$) and 4 treatments have heterogeneous effects ($\beta_3=0.25$, $\beta_4=0.75$, $\beta_4=1$, $\beta_5=1$). Again, we include one control covariate that is correlated with the treatments and truly has an effect. Note that the true ATE and median treatment effects are both 0.5, to facilitate comparison between the BMA and SCA results. This is to facilitate comparison between BMA and SCA , since in our implementation BMA targets the ATE and SCA the median. One can use BMA to obtain inference on the median by using `getATE(ms, xvars=xnames, fun='median')` below.
+We repeat the exercise with truly non-zero coefficinets.
+Note: one can also use BMA to obtain inference on the median by using `getATE(ms, xvars=xnames, fun='median')` below.
 
 ```{r}
 n= 1000; beta= c(0,0,1/4,3/4,1,1); alpha= 1; nsims= 100
@@ -319,8 +293,6 @@ for (i in 1:nsims) {
 ```
 
 
-We first report the bias, RMSE and type I error probabilities for individual treatments. BMA correctly detected that $\beta_1=\beta_2=0$, and that $\beta_3 \neq 0$, $\beta_4 \neq 0$, $\beta_5 \neq 0$ and $\beta_6 \neq 0$ in all simulations.
-
 ```{r}
 bias.indiv= rowMeans(t(bmaest[,xnames]) - beta)
 rmse.indiv= sqrt(rowMeans((t(bmaest[,xnames]) - beta)^2))
@@ -329,10 +301,6 @@ tab4.indiv= rbind(bias.indiv, rmse.indiv, reject.indiv)
 rownames(tab4.indiv)= c('Bias','RMSE','Proportion rejected')
 round(tab4.indiv, 5)
 ```
-
-We next estimate the bias, RMSE and type I error associated to the ATE.  Here BMA correctly detected that the ATE$\neq 0$ in all simulations.  
-<!-- By contrast, SCA only detected that the true in ATE in [x]% of the simulations.   -->
-Again, the bias and RMSE are magnitudes larger for the median taken over all specifications than for the BMA average.
 
 ```{r tab4, cache=TRUE}
 ate= mean(beta)
@@ -368,15 +336,9 @@ tab4summary= paste(nn2,tab4summary)
 
 
 
-## Multiple outcomes
+# Multiple outcomes
 
-Although we generally recommend running BSCA for each outcome individually and reporting the whole heterogeneity across outcomes, below we illustrate how to perform inference for a global ATE across $L$ outcomes and $J$ treatments. We define the global ATE in terms of the original outcomes $y$,
-$$
-\mbox{ATE}= \frac{1}{JL} \sum_{l=1}^L \sum_{j=1}^J \beta_{lj}
-$$
-where $\beta_{jl}$ is the regression parameter for treatment $j$ on outcome $l$.
-
-We consider a setting with $L=4$ outcomes, $J=5$ treatments and $q=1$ control variable. The outcomes are generated from a multivariate linear regression model where the errors are correlated, specifically $\epsilon \sim N(0, \Sigma)$ where $\Sigma$ has unit variances in the diagonal, pairwise correlations equal to 0.9 among outcomes 1-3, and 0.1 correlation with outcome 4. This correlation structure is meant to represent a situation where the first three outcomes can be thought of as measuring one common latent chararacteristic, that is different from that measured by the fourth outcome.
+For the simulations with multiple outcomes, the function `simmultivdata` (created in the supplementary file `functions.R` ) generates the data $y$.
 
 ```{r}
 L= 4; J= 5; q= 1; n= 1000; nsims= 100
@@ -385,13 +347,8 @@ Sigma[1,2]= Sigma[1,3]= Sigma[2,3]= Sigma[2,1]= Sigma[3,1]= Sigma[3,2]= 0.9
 Sigma[1:3,4]= 0.1; Sigma[4,1:3]= 0.1
 ```
 
-Function `simmultivdata` (created in the supplementary file `functions.R` ) generates such data $y$.
 
-
-
-### No average treatment effect
-
-Our first simulation considers a setting where no treatment truly has an effect, hence $\mbox{ATE}=0$. The bias, RMSE to estimate $\mbox{ATE}_y$ are reported below, as well as the type I error rate, which is essentially zero.
+## No average treatment effect
 
 ```{r}
 beta= matrix(0,nrow=J,ncol=L); alpha= matrix(c(1,1,1,-1),nrow=q, ncol=L)
@@ -419,15 +376,14 @@ bma.rejectate= mean(bma.ate[,'margpp']>0.95)
 ```
 
 ```{r}
-tab5= c(bma.biasate, bma.rmseate, bma.rejectate)
-names(tab5)= c('Bias','RMSE','Type I error')
+tab5= matrix(c(bma.biasate, bma.rmseate, bma.rejectate), nrow=1)
+colnames(tab5)= rbind(c('Bias','RMSE','Type I error'))
+rownames(tab5) = c('BMA')
 round(tab5, 4)
 ```
 
 
-### Non-zero average treatment effect
-
-Next we consider a case where 3 treatments truly have an effect, whereas treatments 4-5 do not. The effect of treatments 1-3 on outcomes 1-3 is different to that on outcome 4, again mimicking a situation where outcomes 1-3 measure a common latent characteristic.
+## Non-zero average treatment effect
 
 ```{r}
 beta= matrix(0,nrow=J,ncol=L)
@@ -460,17 +416,79 @@ bma.rejectate= mean(bma.ate[,'margpp']>0.95)
 ```
 
 ```{r}
-tab6= c(bma.biasate, bma.rmseate, bma.rejectate)
-names(tab6)= c('Bias','RMSE','Power')
+tab6= matrix(c(bma.biasate, bma.rmseate, bma.rejectate), nrow=1)
+colnames(tab6)= c('Bias','RMSE','Power')
+rownames(tab6) = c('BMA')
 round(tab6, 4)
 ```
 
+# Export tables
 
+Store all the main results in a summary table.
 
-
-```{r, echo=FALSE}
-# cleanup (needed for bsca_analysis.Rmd to run)
-rm(data, xnames, ms, b, bmaest, margpp, x, y)
+```{r}
+l = list(tab1, tab2, tab3, tab4, tab5, tab6)
+tab = bind_rows(
+  lapply(l, function(m) {
+    bind_cols(rownames(m), as.data.frame(m))
+  })
+)
+tab = as.data.frame(tab) %>%
+  as.data.frame(row.names = 1:nrow(.)) %>%
+  subset(select = -c(`Type I error`, Power)) %>%
+  rename(Estimator = "...1") %>%
+  add_column(
+    Scenario = c(
+      '', '\\multirow{-2}*{$\\beta = (0)$}',
+      '', '\\multirow{-2}*{$\\beta = (1)$}',
+      '', '\\multirow{-2}*{$\\beta = (0, 0, 0, 0, 0, 0)$}',
+      '', '\\multirow{-2}*{$\\beta = (0, 0, 0.25, 0.75, 1, 1)$}',
+      'GATE = 0',
+      'GATE $\\neq$ 0'
+    ),
+    .before = "Estimator"
+  ) %>%
+  mutate(id=row_number()) %>% 
+  tibble::column_to_rownames('id')
 ```
 
+Export the tables to latex.
+
+```{r}
+print(
+  xtable(
+    tab, 
+    digits = 3,
+    label = "tab:sim_summary",
+    caption = "Bias and root mean squared error in simulation scenarios 1-5. Scenarios 1-2 have a single treatment, Scenarios 3-4 have 6 treatments, and Scenarios 5-6 have 4 treatments and 5 outcomes. $\\beta$ indicates the data-generating truth."
+  ),
+  comment = FALSE,
+  sanitize.text.function = force,
+  file = file.path(PATH, 'data/export/sim_summary.tex'),
+)
+
+print(
+  xtable(
+    tab3.indiv, 
+    digits = 3,
+    label = "tab:sim_3_indiv",
+    caption = "Individual coefficient results for BMA in simulation \\#3 with coefficients $\\beta = (0, 0, 0, 0, 0, 0)$"
+  ),
+  comment = FALSE,
+  sanitize.text.function = force,
+  file = file.path(PATH, 'data/export/sim_3_indiv.tex'),
+)
+
+print(
+  xtable(
+    tab4.indiv, 
+    digits = 3,
+    label = "tab:sim_4_indiv",
+    caption = "Individual coefficient results for BSCA in simulation \\#4 with coefficients $\\beta = (0, 0, 0.25, 0.75, 1, 1)$"
+  ),
+  comment = FALSE,
+  sanitize.text.function = force,
+  file = file.path(PATH, 'data/export/sim_4_indiv.tex'),
+)
+```
 

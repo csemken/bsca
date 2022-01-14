@@ -182,8 +182,9 @@ single_bsca= function(fit, coefidx=2, omitvars=c(1, coefidx), bbma,
 
 
 multi_bsca= function(b, ms=NULL, conversion=NULL, treatments=NULL, y.scale='Coefficient', x.name='Treatment', y.name='Outcome', 
-                     y.wrap=21, x.wrap=10, legend.position='right', add.ate=FALSE, ate.name='ATE', 
-                     add.global.ate=FALSE, global.ate.name='  Global ATE', shapes=c(15:19, 3:10)) {
+                     y.wrap=21, x.wrap=10, legend.position='right', legend.key.size=unit(0.9, 'cm'), add.ate=FALSE, ate.name='ATE', 
+                     add.global.ate=FALSE, global.ate.name='  Global ATE', shapes=c(15:19, 3:10),
+                     extract.color=FALSE) {
   # convert b to mombf if necessary
   if (typeof(b[[1]]) == 'list') b = lapply(b, as.mscoef)
   
@@ -206,12 +207,14 @@ multi_bsca= function(b, ms=NULL, conversion=NULL, treatments=NULL, y.scale='Coef
     return(df)
   })
   models = bind_rows(models, .id = 'model')
-  models$term = gsub('`', '', models$term)
   
   # limit treatments
   if (!is.null(treatments)) {
     models = models[models$term %in% c(treatments, ate.name), ]
   }
+  
+  # make names prettier
+  models$term = gsub('`', '', models$term)
   
   # turn into ordered factors
   for (v in c('model', 'term')) {
@@ -232,6 +235,17 @@ multi_bsca= function(b, ms=NULL, conversion=NULL, treatments=NULL, y.scale='Coef
     }
   }
   
+  # set color variable
+  suppressPackageStartupMessages(library(scales))
+  model_names = unique(models$model)
+  if (extract.color) {
+    # use the part in parentheses at the end of the model name for the color
+    color = as.factor(str_match(model_names, r"((.*?)\s\((.*?)\)$)")[,3])
+    color_values = hue_pal()(length(levels(color)))[as.numeric(color)]
+  } else {
+    color_values = hue_pal()(length(model_names))
+  }
+  
   # wrap text
   models$term = str_wrap(models$term, x.wrap)
   models$model = str_wrap(models$model, y.wrap)
@@ -241,19 +255,18 @@ multi_bsca= function(b, ms=NULL, conversion=NULL, treatments=NULL, y.scale='Coef
     models[[v]] = factor(models[[v]], levels = models[[v]][!duplicated(models[[v]])])
   }
   
-  g = ggplot(models, aes(term, estimate, 
-                         shape=model, linetype=model, colour=model)) + 
+  g = ggplot(models, aes_string("term", "estimate", shape="model", linetype="model", colour="model"),
+             environment=environment()) + 
     geom_point(size=3, position = position_dodge(width = 0.5)) +
     geom_errorbar(aes(ymin=conf.low, ymax=conf.high), 
                   lwd=1, width=0, position = position_dodge(width = 0.5)) + 
-    theme_bw() + theme(legend.position=legend.position) + 
+    theme_bw() + theme(legend.position=legend.position, legend.key.size=legend.key.size) + 
     ylab(y.scale) + xlab(x.name) + scale_shape_manual(name=y.name, values=shapes) + 
-    scale_colour_discrete(name=y.name) + scale_linetype_discrete(name=y.name)
+    scale_colour_manual(name=y.name, values=color_values) + scale_linetype_discrete(name=y.name)
   if (add.global.ate) {
     h = global.ate$estimate
     g = g + geom_hline(yintercept=h, lty=2, colour='grey50', size=0.25) + 
       annotate('text', x=0, y=h, label=global.ate.name, hjust=0, vjust=-1, colour='grey50', size=8/.pt) 
-    # geom_text(x=0.2, y=0.5, label='global.ate.name', hjust=0,  colour='black', size=(theme_get()$text$size*theme_get()$legend.text$size/.pt), fontface='plain', family='Times New Roman')
   }
   return(g)
 }

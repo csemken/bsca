@@ -1,5 +1,5 @@
 ---
-title: 'Analysis of multiple specifications'
+title: 'Specification analysis for technology use and teenager well-being'
 subtitle: 'Online Supplement'
 author: 
   - Christoph Semken
@@ -10,7 +10,7 @@ indent: true
 bibliography: specurveanalysis.bib
 link-citations: yes
 output:
-  pdf_document:
+  pdf_document: 
     latex_engine: xelatex
     toc: yes
     number_sections: yes
@@ -22,6 +22,7 @@ header-includes:
    - \hypersetup{colorlinks,citecolor=blue,linkcolor=blue,urlcolor=blue}
    - \renewcommand{\thefigure}{S\arabic{figure}}
    - \renewcommand{\thetable}{S\arabic{table}}
+   - \renewcommand{\thesection}{S\arabic{section}}
 ---
 
 ```{r setup, echo=FALSE, message=FALSE}
@@ -29,7 +30,8 @@ library(tidyverse)
 library(knitr)
 library(kableExtra)  # add options to kable (e.g. caption for tables)
 
-PATH= '.'
+PATH = Sys.getenv("BSCA_PATH")
+invisible(rmarkdown::find_pandoc(dir='D:/Run/pandoc', cache=F))
 
 setwd(file.path(PATH,'code'))
 source(file.path(PATH,'code/functions.R'))
@@ -53,13 +55,41 @@ load(file.path(PATH, 'data/export/mcs.Rdata'), mcs)
 
 ```
 
+
 \newpage
 
 \noindent
 This document contains supplementary information for our paper “Analysis of multiple specifications: statistical validity and a Bayesian proposal”.
+\Cref{sec:bayes101} is a an introduction to Bayesian regression.
 In \cref{sec:main} we describe how BMS and BMA are used to produce a Bayesian Specification Curve Analysis (BSCA) and how to replicate our main results on teenager well-being using R.
 \Cref{sec:robustness} contains supplementary data analyses that assess the robustness of our main findings for the Youth Risk Behavior Survey (YBRS) and Millenium Cohort Study (MCS) datasets. These robustness analyses include comparing linear to non-linear treatment effects and considering other well-being outcomes than those presented in the main paper.
 \Cref{sec:issues} describes certain aspects in which our analysis differs from that of @orben_association_2019. One motivation for these differences was to consider the inclusion of further control covariates, which as discussed in the main paper, is necessary to reduce biases in parameter estimates. We also adjusted the definition of some of the variables – e.g. expressing them on a common scale to facilitate interpretation and comparability, using validated psychometric scales as opposed to (unvalidated) individual outcome variables, fixing minor errors related to variable codes and including unemployed parents in the analysis.
+
+
+# Introduction to Bayesian regression \label{sec:bayes101}
+
+This section provides a short introduction to Bayesian regression.  It is designed to allow readers who are unfamiliar with Bayesian statistics to follow the main text. We recommend anyone who wants to use BSCA to first get a deeper understanding of the Bayesian framework. Two excellent introductions are ‘Statistical Rethinking’ by @mcelreath_statistical_2020 and ‘Bayesian Data Analysis’ by @gelman_bayesian_2013. Two more applied texts are Hoeting et al.’s -@hoeting_bma_1999 BMA tutorial and the open textbook (and course) ‘An Introduction to Bayesian Thinking’ by @clyde_introduction_2020.
+
+Bayesian statistics is based on a law of probability, known as Bayes theorem (or Bayes rule).  It states that for two events $A$ and $B$ with non-zero probability, the probability of $A$ occurring given that $B$ occurred is
+$$ p(A \mid B) = \frac{p(B \mid A) p(A)}{p(B)}$$
+where $p(A)$ and $p(B)$ are the marginal (or unconditional) probabilities of $A$ and $B$ occurring, respectively.
+
+To apply Bayes’ rule to regression models, consider the standard linear regression model $y_i = \beta^T x_i + \alpha^T z_i + \epsilon_i$, where $y_i$ is the value of the dependent variable, $x_i$ contains one or more treatment variables of interest, $z_i$ are adjustment covariates, and $\epsilon_i \sim N(0, \sigma^2)$ are independent errors for observations $i = 1, \ldots, n$. The parameters $(\beta,\alpha,\sigma^2)$ describe the probabilistic dependence of the outcome $y_i$ on the treatment(s) $x_i$, after accounting for the effect of control covariates $z_i$. Specifically, $\beta$ is a vector with one or more parameters that captures the association between the outcome and the treatment(s) of interest. $\alpha$ is a parameter vector capturing the association with control covariates which, despite not being of immediate interest, is needed to reduce biases and variance when estimating $\beta$. 
+Although we describe the linear regression setting for simplicity, an analogous construction applies to any other regression model, including the logistic regression model used in the main paper.
+
+Applying Bayes rule, the information about $(\beta,\alpha,\sigma^2)$ after observing the data is contained in a posterior probability distribution that is described by the density function
+$$ \overbrace{p(\beta,\alpha,\sigma^2 \mid \text{data})}^{\text{posterior prob.}} = \frac{ \overbrace{p(\text{data} \mid \beta,\alpha,\sigma^2)}^{\text{likelihood}} \overbrace{p(\beta,\alpha,\sigma^2)}^{\text{prior prob.}} }{p(\text{data})} $$
+where 'data' denotes the observed data $y_1,x_1,z_1,\ldots,y_n,x_n,z_n$.
+Values of $(\beta,\alpha,\sigma^2)$ receiving higher $p(\beta,\alpha,\sigma^2 \mid \text{data})$ are more supported, *a posteriori* after observing the data, than values receiving lower $p(\beta,\alpha,\sigma^2 \mid \text{data})$.
+
+Two important quantities in the above equation are the likelihood function $p(\text{data} \mid \beta,\alpha,\sigma^2)$ and the prior distribution on the parameters $p(\beta,\alpha,\sigma^2)$.  The likelihood is the probability (or probability density, for continuous data) that we would observe our actual data, given the parameters. The denominator $p(\text{data})$ does not depend on $\beta,\alpha,\sigma^2$, it is a normalizing constant that we do not need to calculate directly and follows from the fact that (like all probability density functions) $p(\beta,\alpha,\sigma^2 \mid \text{data})$ integrates to 1.
+
+
+The posterior information about our treatment effect coefficient(s) of interest $\beta$ given the data is contained in $p(\beta \mid \text{data})$, which can be obtained by integrating the posterior distribution with respect to $\alpha$ and $\sigma^2$, that is
+$$ p(\beta \mid \text{data})= \int p(\beta, \alpha, \sigma^2 \mid \text{data}) d\alpha d\sigma^2.$$
+
+The posterior $p(\beta \mid \text{data})$ contains all the probabilistic information needed in a Bayesian analysis to make inference on the treatment effect(s) $\beta$. In particular, one may obtain a point estimate by taking the posterior mean of $p(\beta \mid \text{data})$, and quantify uncertainty via a 95\% posterior interval (an interval that is assigned 95\% probability by $p(\beta \mid \text{data})$).
+Of particular importance for BSCA, $p(\beta \mid \text{data})$ can be expressed via BMA as a weighted average across models, as we outline next.
 
 
 # Reproducing the BSCA results for the teenager well-being datasets  \label{sec:main}
@@ -150,6 +180,19 @@ knitr::include_graphics(file.path(plot_path, 'mcs_bsca_teen_lin.png'))
 ```
 
 
+## Subgroup analysis
+
+```{r, echo=FALSE, fig.height=3, fig.width=7, fig.cap='\\label{fig:yrbs_mbsca_inter}YRBS data. Multiple outcome BSCA for interactions between different treatments and male.'}
+yrbs$supplement$mbsca_inter
+```
+
+```{r, echo=FALSE, fig.height=3, fig.width=7, fig.cap='\\label{fig:mcs_mbsca_inter}MCS data. Multiple outcome BSCA for interactions between different treatments and male.'}
+mcs$supplement$mbsca_inter
+```
+
+\Cref{fig:yrbs_mbsca_inter,fig:mcs_mbsca_inter} replicate the subgroup analysis of the main paper using logistic regressions for the YRBS and MCS data, respectively. Variables are parameterized as described in Section 2. Thus, the estimated coefficient is a difference compared to the ATE. Besides the inclusion of the gender-treatment interaction variables, the models are specified as in Figures 2, \ref{fig:yrbs_bsca_other} and 4. 
+
+There is less variation in the binary data. As a result, we cannot rule out that there is no gender effect for any of the treatments.
 
 # Further differences with Orben and Przybylski (2019)  \label{sec:issues}
 
@@ -171,7 +214,7 @@ kbl(t, caption='\\label{tab:mcs_outcomes_summary} Summary statistics for parent-
 ```
 
 
-## Questionary outcomes: individual questions versus validated scales \label{sec:issues-measures}
+## Outcomes: individual questions versus validated scales \label{sec:issues-measures}
 
 The analysis by @orben_association_2019 used as outcomes individual questions that make up common scales (e.g. all the values ending in 00 in \cref{tab:mcs_outcomes_summary}).  This is done for the adolescent-assessed Mood and Feelings Questionnaire – short version (SMFQ), the adolescent-assessed Rosenberg scale and the parent-assessed Strengths and Difficulties Questionnaire (SDQ).  While we think it is generally useful to look at different outcomes, we do not recommend breaking up questions that make up established scales, unless there is a strong reason for doing so.  This is because the combined scores have well-established psychometric properties, such as internal consistency, test-retest reliability and validity [see @stone_psychometric_2010;  @sinclair_psychometric_2010; @thabrew_validation_2018 for the SDQ, Rosenberg scale and SMFQ, respectively]. Hence, our analyses focused on the combined scores, rather than on individual questions.  This point was also addressed by @orben_reply_2020 themselves.
 

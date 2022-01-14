@@ -1,5 +1,5 @@
 ---
-title: 'Analysis of multiple specifications'
+title: 'Specification analysis for technology use and teenager well-being'
 subtitle: 'Data preparation and pre-analysis'
 author: 
   - Christoph Semken
@@ -22,7 +22,8 @@ library(stargazer)
 library(cowplot)
 library(gridGraphics)
 
-PATH= '.'
+PATH = Sys.getenv("BSCA_PATH")
+NITER_YRBS = 10; NITER_MCS = 10
 
 source(file.path(PATH,'code/functions.R'))
 
@@ -453,7 +454,7 @@ Include one year coefficient in the control variable panel and set readable name
 ```{r}
 cvars= "race_di"
 cvarsplus= c("age12", "age13", "age_n", "sex_n", "grade_n", "year", "bmi")
-c_names = c('Race', 'Aged 12', 'Aged 13', 'Age', 'Sex', 'Grade', 'Year', 'BMI')
+c_names = c('Race', 'Aged 12', 'Aged 13', 'Age', 'Male', 'Grade', 'Year', 'BMI')
 
 data[,'year']= factor(data[,'year'])  # keep year as a factor
 id_years=c(12:14)  # hide all but one year coefficient (same variable -> included together)
@@ -733,6 +734,60 @@ supplement$bsca_lin = recordPlot()
 ```
 
 
+## SUBGROUP ANALYSIS
+
+We perform a gender subgroup analysis. The variables are parameterized as described in the paper. Interaction terms are included only if the corresponding main variable is included. BMA is done through Gibbs sampling.
+
+```{r}
+idx=c(1,2); idg="Male"
+{
+  options(na.action='na.pass')
+  x.reg = model.matrix(~ ., x[,idx])[, -1]
+  colnames(x.reg) = x_labels
+}
+ms_inter = list(); coef_inter = list()
+
+for (idy in 1:length(y_vars)) {
+  yname = y_names[idy]
+  message(yname)
+  
+  datareg = na.omit(data.frame(y[,idy], x.reg, data[,c(cvars,cvarsplus)]))
+  names(datareg) = c('y', colnames(x.reg), c_names)
+  
+  # treatments
+  idt = colnames(x.reg)
+  datareg[idt] = datareg[idt] - 1/2
+  # group
+  g = datareg[[idg]]; rho = sum(g == 1)/length(g)
+  datareg[[idg]] = ifelse(g == 1, 1-rho, -rho)
+  # interaction 
+  inter = datareg[idt]*datareg[[idg]]
+  colnames(inter) = paste0(colnames(inter), " × male")
+  
+  d = mombf:::createDesign(y ~ ., cbind(datareg, inter))
+  p=length(d$constraints); pi=ncol(inter)
+  d$constraints[(p-pi+1):p] = 1:pi+1
+  ms_inter[[yname]] = mombf:::modelSelection(
+    d$y, d$x, includevars=1, family="binomial", 
+    priorDelta=modelbbprior(1,1), priorCoef=bicprior(), priorGroup=bicprior(),
+    niter=NITER_YRBS, groups=d$groups, constraints=d$constraints,
+  )
+  coef_inter[[yname]] = coef(ms_inter[[yname]])
+}
+```
+
+We can never rule out a zero gender effect.
+
+```{r}
+supplement$mbsca_inter = multi_bsca(
+  coef_inter, ms=ms_inter, conversion=exp,  y.scale='Odds ratio', 
+  treatments=tail(rownames(coef_inter$loneliness), n=length(x_labels)),
+)
+supplement$mbsca_inter
+```
+
+
+
 ## SAVE DATA
 
 Save the data for use in `bsca_main.Rmd`.
@@ -752,7 +807,7 @@ save(
 
 ```{r mcs-setup, message=FALSE}
 # clean up the R environment
-rm(list=setdiff(ls(), c('PATH', 'plot_path')))
+rm(list=setdiff(ls(), c('PATH', 'plot_path', 'NITER_MCS')))
 source(file.path(PATH,'code/functions.R'))
 supplement = list()  # save supplemental figures
 ```
@@ -939,6 +994,9 @@ data$fprosoc_lo = data$fprosoc <= 5
 
 yvars = c('depressed', 'selfesteem_lo', 'febdtot_hi', 'femotion_hi', 'fconduct_hi', 'fhyper_hi', 'fpeer_hi', 'fprosoc_lo')
 names(yvars) = c('Depressed (adolescent)', 'Low self-esteem (adolescent)', 'High total difficulties (parent)', 'High emotional problems (parent)', 'High conduct problems (parent)', 'High hyperactivity/inattention (parent)', 'High peer problems (parent)', 'Low pro-sociality (parent)')
+
+y_cont = c('depressionr', 'selfesteemr', 'febdtotr', 'femotionr', 'fconductr', 'fhyperr', 'fpeerr', 'fprosocr')
+names(y_cont) = c('Depression (adolescent)', 'Self-esteem (adolescent)', 'Total difficulties (parent)', 'Emotional problems (parent)', 'Conduct problems (parent)', 'Hyperactivity/inattention (parent)', 'Peer problems (parent)', 'Pro-sociality (parent)')
 ```
 
 
@@ -1118,7 +1176,7 @@ for (idy in idys) {
   cat('\n    \n')
   cat("#### ", 'Outcome: ', names(y)[idy], '\n')
   
-  datareg= data.frame(y[,idy], xf[,idx], data[,c(cvars)])
+  datareg= na.omit(data.frame(y[,idy], xf[,idx], data[,c(cvars)]))
   names(datareg)[1]= 'y'
   names(datareg)[2:(1+length(idx))]= names(x)[idx]
   names(datareg)[-(1:(1+length(idx)))]= names(cvars)
@@ -1159,7 +1217,7 @@ mcs_lme= list()
 mcs_ms= list()
 
 for (idy in idys) {
-  datareg= data.frame(y[,idy], x[,idx], data[,c(cvars)])
+  datareg= na.omit(data.frame(y[,idy], x[,idx], data[,c(cvars)]))
   names(datareg)[1]= 'y'
   names(datareg)[2:(1+length(idx))]= names(x)[idx]
   names(datareg)[-(1:(1+length(idx)))]= names(cvars)
@@ -1379,13 +1437,133 @@ single_bsca(fit_bas, coefidx=2:6)
 ```
 
 
+## SUBGROUP ANALYSIS
+
+### Logit
+
+We perform a gender subgroup analysis. The variables are parameterized as described in the paper. Interaction terms are included only if the corresponding main variable is included. BMA is done through Gibbs sampling.
+
+```{r}
+idg="Male"
+{
+  options(na.action='na.pass')
+  x.reg = model.matrix(~ ., x[,idx])[, -1]
+  colnames(x.reg) = x_names
+}
+ms_inter = list(); coef_inter = list()
+
+for (idy in 1:length(yvars)) {
+  yname = names(yvars)[idy]
+  message(yname)
+  
+  datareg = na.omit(data[c(yvars[idy], x_vars, cvars)])
+  names(datareg) = c('y', x_names, names(cvars))
+  
+  # treatments
+  idt = colnames(x.reg)
+  datareg[idt] = datareg[idt] - 1/2
+  # group
+  g = datareg[[idg]]; rho = sum(g == 1)/length(g)
+  datareg[[idg]] = ifelse(g == 1, 1-rho, -rho)
+  # interaction 
+  inter = datareg[idt]*datareg[[idg]]
+  colnames(inter) = paste0(colnames(inter), " × male")
+  
+  d = mombf:::createDesign(y ~ ., cbind(datareg, inter))
+  p=length(d$constraints); pi=ncol(inter)
+  d$constraints[(p-pi+1):p] = 1:pi+1
+  ms_inter[[yname]] = mombf:::modelSelection(
+    d$y, d$x, includevars=1, family="binomial", 
+    priorDelta=modelbbprior(1,1), priorCoef=bicprior(), priorGroup=bicprior(),
+    niter=NITER_MCS, groups=d$groups, constraints=d$constraints,
+  )
+  coef_inter[[yname]] = coef(ms_inter[[yname]])
+}
+```
+
+The gender effect is always zero.
+
+```{r}
+supplement$mbsca_inter = multi_bsca(
+  coef_inter, ms=ms_inter, conversion=exp,  y.scale='Odds ratio', 
+  treatments=tail(rownames(coef_inter$`Depressed (adolescent)`), n=length(x_names)),
+  extract.color=TRUE
+) + geom_hline(yintercept=1, lwd=0.2) + ylim(0.8, 1.5)
+supplement$mbsca_inter
+```
+
+### Raw data
+
+Yet, there is a higher correlation between social media use and self-reported regression for females than males.
+
+```{r}
+plotdf = data[!is.na(data$depressed), ] %>% 
+  rename(SocialMediaUsage="fcsome00r", Male="fccsex00r") %>%
+  mutate_at("Male", as.logical) %>%
+  mutate_at("depressed", as.numeric)
+
+# plotdf %>% 
+#   select(Male, SocialMediaUsage, depressed) %>% 
+#   drop_na() %>% 
+#   group_by(Male) %>% 
+#   summarise(cor=cor(SocialMediaUsage, depressed, method="spearman"))
+
+plotdf %>%
+  group_by(Male, SocialMediaUsage) %>%
+  summarise(depressed = mean(depressed)) %>%
+  ggplot(aes(x=SocialMediaUsage, y=depressed, color=Male)) +
+  geom_col(position=position_dodge())
+```
+
+This correlation is even stronger when using the continuous outcome variable. 
+
+```{r}
+# plotdf %>% 
+#   select(Male, SocialMediaUsage, depression) %>% 
+#   drop_na() %>% 
+#   group_by(Male) %>% 
+#   summarise(cor=cor(SocialMediaUsage, depression, method="spearman"))
+
+plotdf %>%
+  group_by(Male, SocialMediaUsage) %>%
+  summarise(depression = mean(depression)) %>%
+  ggplot(aes(x=SocialMediaUsage, y=depression, color=Male)) +
+  geom_col(position=position_dodge())
+```
+
+
+### Linear
+
+We therefore also run the subgroup analysis with the original variables (normalized to 1-10) and a linear model. Here we find a gender effect for depression, in a simple GLM regression. We perform a BMA analysis on all outcomes in the main analysis file.
+
+```{r}
+idg="Male"
+datareg = na.omit(data[c("depression", x_vars, cvars)])
+datareg$depression = datareg$depression/max(datareg$depression)
+names(datareg) = c('y', x_names, names(cvars))
+
+# treatments
+idt = x_names
+datareg[idt] = datareg[idt] - 1/2
+# group
+g = datareg[[idg]]; rho = sum(g == 1)/length(g)
+datareg[[idg]] = ifelse(g == 1, 1-rho, -rho)
+# interaction 
+inter = datareg[idt]*datareg[[idg]]
+colnames(inter) = paste0(colnames(inter), ":male")
+
+fit = lm(y ~ ., data=c(datareg, inter))
+summary(fit)
+```
+
+
 ## SAVE DATA
 
 Save the data for use in `bsca_main.Rmd`.
 
 ```{r}
 save(
-  data, yvars, x_vars, x_names, cvars, pp_lin, supplement,
+  data, yvars, y_cont, x_vars, x_names, cvars, pp_lin, supplement,
   file=file.path(PATH, 'data/export/mcs.Rdata')
 )
 ```
