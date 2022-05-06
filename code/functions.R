@@ -388,7 +388,7 @@ getOR= function(b, treat, treatvals=NULL, digits=NULL) {
   if (is.null(treatvals)) {
     rownames(or)= rownames(btreat)
   } else {
-    rownames(or)= paste(treat, treatvals)
+    rownames(or)= paste(treat, round(treatvals, digits=digits))
   }
   if (!is.null(digits)) {
     or= round(or, digits=digits)

@@ -107,14 +107,21 @@ yrbs_coef = coef(yrbs_ms)
 yrbs_coef
 ```
 
-Given these coefficients, we use the function `getOR` to obtain odds ratios for increasing the TV use from low to medium/high, and for increasing the electronic device use from 0 to >= 5 hours (coded as EDU=1 in our dataset, leading to setting `treatvals=1` below).  The function exponentiates the coefficient estimates and formats the result.
+Given these coefficients, we use the function `getOR` to obtain odds ratios for increasing the TV use from low to medium/high, and for increasing the electronic device use from 0 hours to various levels.  The function exponentiates the coefficient estimates and formats the result. The normalized electronic device use levels correspond to 
+- 0.17: < 1 hour
+- 0.33: 1 hour
+- 0.50: 2 hours
+- 0.67: 3 hours
+- 0.83: 4 hours
+- 1: >= 5 hours
 
 ```{r}
 getOR(yrbs_coef, treat='TV Use', digits=2)
 ```
 
 ```{r}
-getOR(yrbs_coef, treat='Electronic Device Use', treatvals=1, digits=2)
+getOR(yrbs_coef, treat='Electronic Device Use', 
+      treatvals=sort(na.omit(unique(yrbs$data$q82_nr))), digits=2)
 ```
 
 Note that the regression models include simultaneously the two treatment variables, TV and electronic device (ED) usage, which is necessary to avoid biased estimates when treatments are correlated. In these data the correlation is mild, for instance Pearson's correlation between the number of hours of TV use and ED use (columns `q81` and `q82` in `data`) is 0.21. 
@@ -197,7 +204,7 @@ getOR(mcs_coef$`Depressed (adolescent)`, treat='Social media',
       treatvals=1, digits=2)
 ```
 
-```{r, eval=FALSE}
+```{r}
 getOR(mcs_coef$`Low self-esteem (adolescent)`, treat='Social media', 
       treatvals=1, digits=2)
 ```
@@ -268,7 +275,7 @@ if (exists('plot_path')) {
 
 We perform subgroup analyses for males using the continuous MCS outcomes, normalized to 1-10. After selecting the right data, we parameterize the variables as described in the paper. Interaction terms are included only if the corresponding main variable is included. We then perform BMA using `mombf:::modelSelection`.
 
-```{r}
+```{r echo=T, warning=FALSE, results='hide'}
 attach(mcs)
 
 idg="Male"; NITER_MCS = 10
@@ -281,7 +288,6 @@ idg="Male"; NITER_MCS = 10
 ms_inter = list(); coef_inter = list()
 for (idy in 1:length(y_cont)) {
   yname = names(y_cont)[idy]
-  message(yname)
   
   datareg = na.omit(data[c(y_cont[idy], x_vars, cvars)])
   names(datareg) = c('y', x_names, names(cvars))
@@ -340,4 +346,58 @@ if (exists('plot_path')) {
 ```
 
 
+## Partial correlations
+
+As mentioned, in Section 2.5 of the main text, one can obtain partial correlations from the results of a linear regression.
+Here we show how to implement this strategy using the MCS data.
+
+We first run a linear regression, see also the robustness section below.
+
+
+```{r echo=T, results = 'hide'}
+attach(mcs)
+
+ms_lin = list();
+for (idy in 1:length(y_cont)) {
+  yname = names(y_cont)[idy]
+  
+  datareg = na.omit(data[c(y_cont[idy], x_vars, cvars)])
+  names(datareg) = c('y', x_names, names(cvars))
+  
+  ms_lin[[yname]] = mombf:::modelSelection(
+    y ~ ., data=datareg, includevars=1, priorDelta=modelbbprior(1,1), 
+    priorCoef=bicprior(), priorGroup=bicprior(),
+  )
+}
+
+detach(mcs)
+```
+
+We estimate the correlations using the formula from the main text, using the posterior distribution of \phi and a least-squares estimator for $var(x_j|y, x_{-j}, z)$. The results are shown below for the partial correlations of the MSC outcomes from Figure 4 with TV, electronic games (EG), social media (SM), other internet (OI) usage, and having an own computer (OC).
+
+```{r warning=FALSE}
+# calc conditional var(x_j|y, x_{-j})
+get_cond_var_x = function(xvar, regdata) {
+  fit = lm(paste(xvar, "~ ."), regdata)
+  n = nrow(regdata); p = ncol(regdata)
+  cond_var = sum(residuals(fit)^2) / (n-p)
+  return(cond_var)
+}
+
+# get conditional cov for one y
+get_cond_var_y = function(yvar) {
+  b = coef(ms_lin[[yvar]])
+  phi = b["phi", "estimate"]
+  bx = b[2:(1+length(mcs$x_vars)), "estimate"]
+  cond_var = sapply(names(bx), get_cond_var_x, datareg)
+  r = -bx*sqrt(phi*cond_var)
+  return(r)
+}
+
+# combine
+corr = t(sapply(names(mcs$y_cont), get_cond_var_y))
+colnames(corr) = c("TV", "EG", "SM", "OI", "OC")
+
+round(corr, 3)
+```
 

@@ -1,6 +1,6 @@
 # Overview
 
-This repository contains the code needed to reproduce the results of “Analysis of multiple specifications: statistical validity and a Bayesian proposal” (Semken and Rossell 2021).
+This repository contains the code needed to reproduce the results of “Analysis of multiple specifications: statistical validity and a Bayesian proposal” (Semken and Rossell 2022).
 
 Preprint (pdf): https://osf.io/cahyq
 
