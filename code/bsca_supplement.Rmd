@@ -37,7 +37,7 @@ setwd(file.path(PATH,'code'))
 source(file.path(PATH,'code/functions.R'))
 
 kbl =  knitr::kable  # shortcut for kable
-plot_path = file.path(PATH, 'data/export/plots')
+plot_path = file.path(PATH, 'data/export/plots/')
 
 # Print data.frames and matrices nicely
 knit_print.data.frame = function(x, ...) {
@@ -95,6 +95,10 @@ Of particular importance for BSCA, $p(\beta \mid \text{data})$ can be expressed 
 # Reproducing the BSCA results for the teenager well-being datasets  \label{sec:main}
 
 ```{r child = 'bsca_analysis.Rmd'}
+```
+
+```{r, echo=FALSE}
+knitr::opts_chunk$set(fig.path='bsca_supplement_files/')
 ```
 
 
@@ -186,7 +190,7 @@ knitr::include_graphics(file.path(plot_path, 'mcs_bsca_teen_lin.png'))
 yrbs$supplement$mbsca_inter
 ```
 
-```{r, echo=FALSE, fig.height=3, fig.width=7, fig.cap='\\label{fig:mcs_mbsca_inter}MCS data. Multiple outcome BSCA for interactions between different treatments and male.'}
+```{r, echo=FALSE, fig.height=4, fig.width=7, fig.cap='\\label{fig:mcs_mbsca_inter}MCS data. Multiple outcome BSCA for interactions between different treatments and male.'}
 mcs$supplement$mbsca_inter
 ```
 

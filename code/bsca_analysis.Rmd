@@ -49,6 +49,10 @@ source(file.path(PATH, 'code/functions.R'))
 yrbs = new.env(); mcs = new.env()
 load(file.path(PATH, 'data/export/yrbs.Rdata'), yrbs)
 load(file.path(PATH, 'data/export/mcs.Rdata'), mcs)
+
+if (exists('plot_path')) {
+  knitr::opts_chunk$set(fig.path=plot_path, dev=c('postscript'))
+}
 ```
 
 
@@ -168,7 +172,7 @@ for (idy in 1:length(yvars)) {
   mcs_ms[[yname]] = mombf:::modelSelection(
     y ~ ., data=datareg, includevars=1, family="binomial", 
     priorDelta=modelbbprior(1,1), priorCoef=bicprior(), priorGroup=bicprior(),
-    niter=50
+    niter=15000  # make sure we have at least 100 models for all outcomes
   ); cat('\n')
   
   mcs_coef[[yname]] = coef(mcs_ms[[yname]])
@@ -220,7 +224,7 @@ The argument `coefidx` specifies the names of the treatment variables that shoul
 variable names to be displayed in the bottom panel displaying variable configurations (argument `var.labels`), and omitting variables from that panel (argument `omitvars`, useful when there are many variables or when several columns code for the non-linear effect of a single variable and are always included together, such as year in the YRBS data).
 The labels on the y axis are stored in an array whose names (optionally) are the original values (argument `y.labels`).  Here, we turn the estimated coefficient into the odds ratio by exponentiating it.
 
-```{r, fig.height=4, fig.width=7}
+```{r bsca-single-yrbs, fig.height=4, fig.width=7}
 idx_fit = c(2:4) 
 id_years = c(12:14)
 y_labels = c(0.8, 1, 1.25, 1.5, 1.75, 2)
@@ -232,11 +236,12 @@ single_bsca(
 )
 ```
 
+
 ### MCS data
 
 Alternatively, we can plot the single-outcome BSCA for the MCS data and the parent-assessed outcome *high total difficulties*.
 
-```{r, fig.height=5, fig.width=7}
+```{r bsca-single-mcs, fig.height=5, fig.width=7}
 y_labels = c(1/2, 1/1.5, 1, 1.5, 2, 2.5)
 names(y_labels) = log(y_labels)  # y scale as odds ratio
 
@@ -252,7 +257,7 @@ single_bsca(
 
 Our MCS data analysis included eight outcomes and five treatments of interest, for a total of 40 treatment-outcome combinations. To reduce the burden associated with producing a single BSCA plot for each outcome, the function `multi_bsca` summarizes the BMA results in a single plot. This plot allows one to easily evaluate and compare effects of several treatments on several outcomes. For instance, below all treatments have a similar effect on adolescent-assessed depression and on self-stem. However, these effects are non-comparable to those on parent-assessed total difficulties and emotional problems. We also add the ATE across treatments (`add.ate=TRUE`) and the simple average across outcomes (`add.avg=TRUE`).  The average of the ATE estimates is the global ATE.
 
-```{r, fig.height=4, fig.width=7}
+```{r bsca-multiple, fig.height=4, fig.width=7}
 source('functions.R')
 g = multi_bsca(mcs_coef, ms=mcs_ms, conversion=exp,  y.scale='Odds ratio', 
             treatments=c('TV', '`Electronic games`', '`Social media`', 
@@ -263,13 +268,6 @@ g = multi_bsca(mcs_coef, ms=mcs_ms, conversion=exp,  y.scale='Odds ratio',
 g + geom_hline(yintercept=1, lwd=0.2, colour=g$theme$panel.border$colour)
 ```
 
-```{r, echo=FALSE}
-# save figure
-if (exists('plot_path')) {
-  ggsave(file.path(plot_path, 'mcs_bsca_multiple.png'), height=4, width=7)
-}
-```
-
 
 ## Subgroup analysis
 
@@ -278,7 +276,7 @@ We perform subgroup analyses for males using the continuous MCS outcomes, normal
 ```{r echo=T, warning=FALSE, results='hide'}
 attach(mcs)
 
-idg="Male"; NITER_MCS = 10
+idg="Male"
 {
   options(na.action='na.pass')
   x.reg = model.matrix(~ ., data[,x_vars])[, -1]
@@ -308,7 +306,7 @@ for (idy in 1:length(y_cont)) {
   ms_inter[[yname]] = mombf:::modelSelection(
     d$y, d$x, includevars=1, priorDelta=modelbbprior(1,1), 
     priorCoef=bicprior(), priorGroup=bicprior(),
-    niter=NITER_MCS, groups=d$groups, constraints=d$constraints,
+    groups=d$groups, constraints=d$constraints,
   )
   coef_inter[[yname]] = coef(ms_inter[[yname]])
 }
@@ -318,7 +316,7 @@ detach(mcs)
 
 We show the results in a multiple-outcome BSCA. 
 
-```{r, fig.height=4, fig.width=7}
+```{r bsca-subgroup, fig.height=4, fig.width=7}
 multi_bsca(
   coef_inter, ms=ms_inter, treatments=paste0("`", colnames(inter), "`"),
   extract.color=TRUE
@@ -335,14 +333,6 @@ The interaction coefficients for self-reported self-esteem are:
 
 ```{r}
 print(coef_inter$`Self-esteem (adolescent)`[paste0("`", colnames(inter), "`"), ])
-```
-
-
-```{r, echo=FALSE}
-# save figure
-if (exists('plot_path')) {
-  ggsave(file.path(plot_path, 'mcs_subgroup.png'), height=4, width=7)
-}
 ```
 
 
